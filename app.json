@@ -19,7 +19,16 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "package": "com.jshim.AirStoryApp"
     },
     "web": {
       "output": "static",
@@ -38,11 +47,18 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "react-native-ble-plx"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "854c22a3-5f22-4e95-ae64-c22e9d681f7a"
+      }
     }
   }
 }
