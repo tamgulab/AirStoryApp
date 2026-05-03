@@ -1,8 +1,8 @@
-import { Text, View, TouchableOpacity, StyleSheet, FlatList, Alert } from "react-native";
-import { useRouter } from "expo-router";
-import { useState, useEffect } from "react";
 import * as FileSystem from "expo-file-system/legacy";
+import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
+import { useEffect, useState } from "react";
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface Session {
   id: string;
@@ -86,7 +86,7 @@ export default function History() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>History Sessions</Text>
+      <Text style={styles.title}>Session History</Text>
 
       <View style={styles.legend}>
         <View style={styles.legendItem}>

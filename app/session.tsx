@@ -184,17 +184,34 @@ export default function Session() {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.header}>New Session</Text>
-      {connectedDevice && (
-        <View style={styles.connectedBadge}>
-          <Text style={styles.connectedText}>Device Connected: {connectedDevice.name}</Text>
+{connectedDevice && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <View style={styles.connectedBadge}>
+            <Text style={styles.connectedText}>Device Connected: {connectedDevice.name}</Text>
+          </View>
+{battery > 0 && (
+            <View style={[styles.connectedBadge, { 
+              backgroundColor: 
+                battery >= 4.2 ? "#e8f0fe" :
+                Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 20 ? "#ffebee" :
+                Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 25 ? "#fff3e0" :
+                "#e6f4ea"
+            }]}>
+              <Text style={[styles.connectedText, { 
+                color: 
+                  battery >= 4.2 ? "#1a73e8" :
+                  Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 20 ? "#c62828" :
+                  Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 25 ? "#e65100" :
+                  "#2e7d32"
+              }]}>
+{battery >= 4.2 
+                  ? `🔋⚡ (${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%)`
+                  : `🔋 ${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%`}              </Text>
+            </View>
+          )}
         </View>
       )}
       {isReceiving && <RecordingBadge />}
-      {battery > 0 && battery < 3.5 && (
-        <View style={styles.batteryWarning}>
-          <Text style={styles.batteryWarningText}>⚠️ Low Battery: {battery}V - Please charge sensor!</Text>
-        </View>
-      )}
 
       <TextInput
         style={styles.input}
@@ -270,7 +287,7 @@ const styles = StyleSheet.create({
   dataLabel: { fontSize: 12, color: "#888", marginTop: 4 },
   batteryWarning: { backgroundColor: "#ffebee", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, marginBottom: 16, width: "100%", alignItems: "center" },
   batteryWarningText: { color: "#c62828", fontSize: 13, fontWeight: "600" },
-  connectedBadge: { backgroundColor: "#e6f4ea", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 16, alignSelf: "flex-start" },
+  connectedBadge: { backgroundColor: "#e6f4ea", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 16, alignSelf: "flex-start" },
   connectedText: { color: "#2e7d32", fontSize: 13, fontWeight: "600" },
   endButton: { backgroundColor: "#1a73e8", padding: 16, borderRadius: 12, alignItems: "center", marginBottom: 40 },
   endButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
