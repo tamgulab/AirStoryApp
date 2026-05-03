@@ -79,3 +79,6 @@ AirStoryApp/
 - **앱**: React Native (Expo)
 - **센서**: MicroPython (Raspberry Pi Pico W)
 - **통신**: Bluetooth Low Energy (BLE)
+
+## 📲 APK 다운로드
+[AirStory v1.0.0 다운로드](https://expo.dev/accounts/jshim/projects/AirStoryApp/builds/ef2763f9-f638-40ef-b695-766f9ea61688)
