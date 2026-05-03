@@ -111,6 +111,7 @@ export default function Session() {
           setCo(parseFloat(parts[1]) || 0);
           setTemp(parseFloat(parts[2]) || 0);
           setHum(parseFloat(parts[3]) || 0);
+          if (parts[4]) setBattery(parseFloat(parts[4]) || 0);          
           setIsReceiving(true);
         }
       });
