@@ -1,19 +1,21 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useEffect, useState } from "react";
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface Session {
   id: string;
   name: string;
   path: string;
-  uploaded: boolean;
 }
 
 export default function History() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [csvCache, setCsvCache] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadSessions();
@@ -35,7 +37,6 @@ export default function History() {
         id: f,
         name: f.replace("session_", "").replace(".csv", ""),
         path: FileSystem.documentDirectory + f,
-        uploaded: false,
       }));
       setSessions(loaded);
     } catch (e) {
@@ -51,6 +52,23 @@ export default function History() {
     }
   };
 
+  const toggleExpand = async (session: Session) => {
+    if (expandedIds.includes(session.id)) {
+      setExpandedIds(prev => prev.filter(id => id !== session.id));
+      return;
+    }
+    if (!(session.id in csvCache)) {
+      try {
+        const content = await FileSystem.readAsStringAsync(session.path, { encoding: "utf8" });
+        setCsvCache(prev => ({ ...prev, [session.id]: content }));
+      } catch (e) {
+        console.log("Read CSV error:", e);
+        setCsvCache(prev => ({ ...prev, [session.id]: "Failed to load data" }));
+      }
+    }
+    setExpandedIds(prev => [...prev, session.id]);
+  };
+
   const deleteSession = async (session: Session) => {
     Alert.alert(
       "Delete Session",
@@ -63,6 +81,12 @@ export default function History() {
           onPress: async () => {
             try {
               await FileSystem.deleteAsync(session.path);
+              setExpandedIds(prev => prev.filter(id => id !== session.id));
+              setCsvCache(prev => {
+                const next = { ...prev };
+                delete next[session.id];
+                return next;
+              });
               loadSessions();
             } catch (e) {
               console.log("Delete error:", e);
@@ -71,6 +95,20 @@ export default function History() {
         }
       ]
     );
+  };
+
+  const filterCsvForPreview = (csvData: string): string => {
+    const previewColumns = ["Timestamp", "PM 2.5", "CO", "Temperature", "Humidity"];
+    const lines = csvData.split("\n");
+    if (lines.length === 0) return "";
+    const headers = lines[0].split(",").map(h => h.trim());
+    const indices = previewColumns.map(col => headers.indexOf(col));
+    return lines
+      .map(line => {
+        const cells = line.split(",");
+        return indices.map(i => (i === -1 ? "" : (cells[i] ?? ""))).join(",");
+      })
+      .join("\n");
   };
 
   const formatName = (fileName: string) => {
@@ -96,17 +134,6 @@ export default function History() {
     <View style={styles.container}>
       <Text style={styles.title}>Session History</Text>
 
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.dot, { backgroundColor: "red" }]} />
-          <Text style={styles.legendText}>Pending for Upload</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.dot, { backgroundColor: "green" }]} />
-          <Text style={styles.legendText}>Uploaded</Text>
-        </View>
-      </View>
-
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.id}
@@ -114,21 +141,40 @@ export default function History() {
         ListEmptyComponent={
           <Text style={styles.empty}>No sessions yet</Text>
         }
-        renderItem={({ item }) => (
-          <View style={styles.sessionItem}>
-            <TouchableOpacity style={styles.sessionInfo} onPress={() => shareSession(item)}>
-              <Text style={styles.sessionName}>{formatName(item.name).name}</Text>
-              <Text style={styles.sessionTime}>{formatName(item.name).date}</Text>
-              <Text style={styles.exportText}>Tap to export CSV</Text>
-            </TouchableOpacity>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View style={[styles.dot, { backgroundColor: item.uploaded ? "green" : "red" }]} />
-              <TouchableOpacity onPress={() => deleteSession(item)} style={styles.deleteBtn}>
-                <Text style={{ color: "red", fontSize: 22 }}>🗑</Text>
-              </TouchableOpacity>
+        renderItem={({ item }) => {
+          const isExpanded = expandedIds.includes(item.id);
+          const csvContent = csvCache[item.id];
+          return (
+            <View style={styles.sessionWrapper}>
+              <View style={styles.sessionItem}>
+                <TouchableOpacity style={styles.sessionInfo} onPress={() => toggleExpand(item)}>
+                  <Text style={styles.sessionName}>{formatName(item.name).name}</Text>
+                  <Text style={styles.sessionTime}>{formatName(item.name).date}</Text>
+                  <Text style={styles.exportText}>Tap to view data</Text>
+                </TouchableOpacity>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <TouchableOpacity onPress={() => shareSession(item)} style={styles.iconBtn}>
+                    <Ionicons name="share-social-outline" size={22} color="#1a73e8" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteSession(item)} style={styles.iconBtn}>
+                    <Ionicons name="trash-outline" size={22} color="red" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {isExpanded && (
+                <View style={styles.csvContainer}>
+                  <ScrollView style={styles.csvVertical} nestedScrollEnabled>
+                    <ScrollView horizontal nestedScrollEnabled>
+                      <Text style={styles.csvText}>
+                        {csvContent ? filterCsvForPreview(csvContent) : "Loading..."}
+                      </Text>
+                    </ScrollView>
+                  </ScrollView>
+                </View>
+              )}
             </View>
-          </View>
-        )}
+          );
+        }}
       />
 
       <TouchableOpacity style={styles.buttonPrimary} onPress={loadSessions}>
@@ -156,25 +202,6 @@ const styles = StyleSheet.create({
     color: "#1a73e8",
     marginBottom: 16,
   },
-  legend: {
-    flexDirection: "row",
-    gap: 16,
-    marginBottom: 16,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  legendText: {
-    fontSize: 12,
-    color: "#888",
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
   list: {
     flex: 1,
   },
@@ -184,11 +211,13 @@ const styles = StyleSheet.create({
     marginTop: 40,
     fontSize: 14,
   },
+  sessionWrapper: {
+    marginBottom: 10,
+  },
   sessionItem: {
     backgroundColor: "#f5f5f5",
     padding: 16,
     borderRadius: 12,
-    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -198,7 +227,7 @@ const styles = StyleSheet.create({
     color: "#1a73e8",
     marginTop: 4,
   },
-  deleteBtn: {
+  iconBtn: {
     padding: 8,
   },
   sessionInfo: {
@@ -213,6 +242,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#888",
     marginTop: 4,
+  },
+  csvContainer: {
+    backgroundColor: "#fafafa",
+    borderRadius: 8,
+    marginTop: 6,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  csvVertical: {
+    maxHeight: 300,
+  },
+  csvText: {
+    fontFamily: "Courier",
+    fontSize: 12,
+    color: "#333",
   },
   buttonPrimary: {
     backgroundColor: "#1a73e8",
