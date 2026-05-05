@@ -10,6 +10,9 @@ ble_led  = Pin(3, Pin.OUT)  # 파란 LED - 블루투스 연결
 batt_led = Pin(4, Pin.OUT)  # 초록 LED - 배터리 상태
 data_led = Pin(5, Pin.OUT)  # 노란 LED - 데이터 전송
 
+# BAT_CHRG - 충전 상태 입력 (GP1, active LOW)
+chrg_pin = Pin(1, Pin.IN, Pin.PULL_UP)
+
 # 시작시 모두 OFF
 ble_led.value(1)
 batt_led.value(1)
@@ -161,10 +164,16 @@ pico_ble = PicoBLE(name="AirStory1")
 # ----------------------------
 # 메인 루프
 # ----------------------------
+batt_led_state = 1  # 1=OFF, 0=ON (초기 상태 OFF)
+
 while True:
-    # 배터리 확인 후 초록 LED
+    charging = (chrg_pin.value() == 0)  # 충전 중이면 True
+
+    # 배터리 확인 후 초록 LED (충전 중이 아닐 때만 전압으로 결정)
     v_batt = read_battery()
-    batt_led.value(0 if v_batt > 3.5 else 1)
+    if not charging:
+        batt_led_state = 0 if v_batt > 3.5 else 1
+        batt_led.value(batt_led_state)
 
     # 센서 읽기
     pm25 = read_dust()
@@ -187,4 +196,9 @@ while True:
     time.sleep_ms(100)
     data_led.value(1)   # 노란 LED OFF
 
-    time.sleep(3)
+    # 3초 sleep을 1초씩 분할 - 충전 중이면 LED 깜빡임
+    for _ in range(3):
+        if charging:
+            batt_led_state = 1 - batt_led_state  # 0↔1 토글
+            batt_led.value(batt_led_state)
+        time.sleep(1)
