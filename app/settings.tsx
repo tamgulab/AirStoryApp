@@ -2,9 +2,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { manager, useBLE } from "./bleContext";
 
 export default function Settings() {
   const router = useRouter();
+  const { connectedDevice, setConnectedDevice } = useBLE();
   const [period, setPeriod] = useState("");
   const [group, setGroup] = useState("");
 
@@ -52,10 +54,18 @@ const resetAll = async () => {
           text: "Reset All",
           style: "destructive",
           onPress: async () => {
+            if (connectedDevice) {
+              try {
+                await manager.cancelDeviceConnection(connectedDevice.id);
+              } catch (e) {
+                console.log("Disconnect error:", e);
+              }
+            }
+            setConnectedDevice(null);
             await AsyncStorage.clear();
             setPeriod("");
             setGroup("");
-            Alert.alert("Done", "All settings have been reset.");
+            Alert.alert("Done", "All settings and device connection have been reset.");
           }
         }
       ]

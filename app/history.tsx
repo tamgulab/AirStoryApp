@@ -23,6 +23,14 @@ export default function History() {
     try {
       const files = await FileSystem.readDirectoryAsync(FileSystem.documentDirectory!);
       const csvFiles = files.filter(f => f.endsWith(".csv"));
+      const extractDateKey = (fileName: string) => {
+        const withoutExt = fileName.replace(".csv", "");
+        const lastUnderscore = withoutExt.lastIndexOf("_");
+        if (lastUnderscore === -1) return "";
+        const dateStr = withoutExt.substring(lastUnderscore + 1);
+        return dateStr.length === 14 ? dateStr : "";
+      };
+      csvFiles.sort((a, b) => extractDateKey(b).localeCompare(extractDateKey(a)));
       const loaded = csvFiles.map(f => ({
         id: f,
         name: f.replace("session_", "").replace(".csv", ""),
