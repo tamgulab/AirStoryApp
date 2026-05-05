@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useEffect, useState } from "react";
-import { Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { supabase } from "./supabaseClient";
 
 interface Session {
   id: string;
@@ -16,10 +18,39 @@ export default function History() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [csvCache, setCsvCache] = useState<Record<string, string>>({});
+  const [uploadingIds, setUploadingIds] = useState<string[]>([]);
+  const [uploadedIds, setUploadedIds] = useState<string[]>([]);
 
   useEffect(() => {
     loadSessions();
+    loadUploadedSessions();
   }, []);
+
+  const loadUploadedSessions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("csv_file_url");
+
+      if (error) {
+        console.log("Failed to load uploaded sessions:", error);
+        return;
+      }
+
+      if (data) {
+        const uploadedFileNames = data
+          .map(row => {
+            const url = row.csv_file_url || "";
+            return url.split("/").pop() || "";
+          })
+          .filter(name => name.length > 0);
+
+        setUploadedIds(uploadedFileNames);
+      }
+    } catch (e) {
+      console.log("Error loading uploaded sessions:", e);
+    }
+  };
 
   const loadSessions = async () => {
     try {
@@ -49,6 +80,48 @@ export default function History() {
       await Sharing.shareAsync(session.path);
     } catch (e) {
       console.log("Share error:", e);
+    }
+  };
+
+  const uploadSession = async (session: Session) => {
+    if (uploadingIds.includes(session.id) || uploadedIds.includes(session.id)) return;
+
+    const className = await AsyncStorage.getItem("className");
+    const period = await AsyncStorage.getItem("period");
+    const group = await AsyncStorage.getItem("group");
+    if (!className || !period || !group) {
+      Alert.alert("Settings required", "Please set your group in Settings first.");
+      return;
+    }
+
+    setUploadingIds(prev => [...prev, session.id]);
+    try {
+      const csvContent = await FileSystem.readAsStringAsync(session.path, { encoding: "utf8" });
+
+      const { error: uploadError } = await supabase.storage
+        .from("csv-files")
+        .upload(session.id, csvContent, { upsert: true, contentType: "text/csv" });
+      if (uploadError) throw uploadError;
+
+      const publicUrl = supabase.storage.from("csv-files").getPublicUrl(session.id).data.publicUrl;
+
+      const { error: insertError } = await supabase.from("sessions").insert({
+        session_name: formatName(session.name).name,
+        school: "Philadelphia High School for Girls",
+        class_instructor: className,
+        period,
+        group_name: group,
+        csv_file_url: publicUrl,
+      });
+      if (insertError) throw insertError;
+
+      setUploadedIds(prev => [...prev, session.id]);
+      Alert.alert("Success", "Uploaded successfully!");
+    } catch (e: any) {
+      console.log("Upload error:", e);
+      Alert.alert("Upload failed", e?.message ?? "Unknown error");
+    } finally {
+      setUploadingIds(prev => prev.filter(id => id !== session.id));
     }
   };
 
@@ -134,6 +207,17 @@ export default function History() {
     <View style={styles.container}>
       <Text style={styles.title}>Session History</Text>
 
+      <View style={{ flexDirection: "row", gap: 16, marginBottom: 12, marginTop: -8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#ea4335" }} />
+          <Text style={{ fontSize: 12, color: "#666" }}>Pending for Upload</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#34a853" }} />
+          <Text style={{ fontSize: 12, color: "#666" }}>Uploaded</Text>
+        </View>
+      </View>
+
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.id}
@@ -148,11 +232,36 @@ export default function History() {
             <View style={styles.sessionWrapper}>
               <View style={styles.sessionItem}>
                 <TouchableOpacity style={styles.sessionInfo} onPress={() => toggleExpand(item)}>
-                  <Text style={styles.sessionName}>{formatName(item.name).name}</Text>
-                  <Text style={styles.sessionTime}>{formatName(item.name).date}</Text>
-                  <Text style={styles.exportText}>Tap to view data</Text>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                    <View style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: uploadedIds.includes(item.id) ? "#34a853" : "#ea4335",
+                      marginRight: 8,
+                      marginTop: 6,
+                    }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sessionName}>{formatName(item.name).name}</Text>
+                      <Text style={styles.sessionTime}>{formatName(item.name).date}</Text>
+                      <Text style={styles.exportText}>Tap to view data</Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <TouchableOpacity
+                    onPress={() => uploadSession(item)}
+                    style={styles.iconBtn}
+                    disabled={uploadingIds.includes(item.id) || uploadedIds.includes(item.id)}
+                  >
+                    {uploadingIds.includes(item.id) ? (
+                      <ActivityIndicator size="small" color="#1a73e8" />
+                    ) : uploadedIds.includes(item.id) ? (
+                      <Ionicons name="cloud-done-outline" size={22} color="#34a853" />
+                    ) : (
+                      <Ionicons name="cloud-upload-outline" size={22} color="#1a73e8" />
+                    )}
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => shareSession(item)} style={styles.iconBtn}>
                     <Ionicons name="share-social-outline" size={22} color="#1a73e8" />
                   </TouchableOpacity>
@@ -177,7 +286,10 @@ export default function History() {
         }}
       />
 
-      <TouchableOpacity style={styles.buttonPrimary} onPress={loadSessions}>
+      <TouchableOpacity style={styles.buttonPrimary} onPress={() => {
+        loadSessions();
+        loadUploadedSessions();
+      }}>
         <Text style={styles.buttonText}>Refresh</Text>
       </TouchableOpacity>
 
