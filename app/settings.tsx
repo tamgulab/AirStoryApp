@@ -85,9 +85,9 @@ const resetAll = async () => {
       <Text style={styles.label}>Period</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. 1"
+        placeholder="1-9"
         value={period}
-        onChangeText={(text) => setPeriod(text.replace(/[^0-9]/g, "").substring(0, 1))}
+        onChangeText={(text) => setPeriod(text.replace(/[^0-9]/g, ""))}
         keyboardType="numeric"
         maxLength={1}
       />
@@ -95,10 +95,11 @@ const resetAll = async () => {
       <Text style={styles.label}>Group Name</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. G1"
+        placeholder="1-9"
         value={group}
-        onChangeText={(text) => setGroup(sanitize(text))}
-        maxLength={20}
+        onChangeText={(text) => setGroup(text.replace(/[^0-9]/g, ""))}
+        keyboardType="numeric"
+        maxLength={1}
       />
 
       <TouchableOpacity style={styles.buttonPrimary} onPress={saveSettings}>
