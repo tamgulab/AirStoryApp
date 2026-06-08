@@ -1,84 +1,92 @@
 # 🌬️ AirStory
 
-**TAMGU Lab, Teachers College Columbia University**
+**TAMGU Lab, Teachers College, Columbia University**
 
-AirStory는 고등학생들이 실내외 공기질 데이터를 직접 수집하고 탐구할 수 있도록 설계된 모바일 앱 + 센서 시스템입니다. Philadelphia High School for Girls와의 협력 연구 프로젝트의 일환으로 개발되었습니다.
-
----
-
-## 📱 앱 주요 기능
-
-- **BLE 센서 연결** - Raspberry Pi Pico W 기반 센서와 블루투스로 연결
-- **실시간 데이터 수집** - PM2.5, CO, 온도, 습도 실시간 모니터링
-- **세션 기록** - 측정 위치, 시간, 환경 정보와 함께 데이터 저장
-- **CSV 내보내기** - 수집된 데이터를 CSV 파일로 저장
-- **기록 보기** - 이전 세션 데이터 확인
+AirStory is a mobile app and sensor system designed to let high school students collect and explore indoor and outdoor air quality data on their own. It was developed as part of a collaborative research project with The Philadelphia High School for Girls.
 
 ---
 
-## 🔧 센서 구성
+## 📱 App Features
 
-| 센서 | 측정 항목 | 모델 |
-|------|-----------|------|
-| 미세먼지 | PM2.5 (ug/m³) | PMS7003 |
-| 일산화탄소 | CO (ppm) | ZE07-CO |
-| 온습도 | 온도 (°C), 습도 (%) | SHT31 |
-| 배터리 | 전압 (V) | LP103665 3000mAh |
+- **BLE sensor connection**: Connects over Bluetooth to a sensor built on the Raspberry Pi Pico W
+- **Real time data collection**: Monitors PM2.5, CO, temperature, and humidity in real time
+- **Session recording**: Saves data together with the measurement location, time, and environmental information
+- **CSV export**: Saves the collected data as a CSV file
+- **History view**: Lets you review data from earlier sessions
 
 ---
 
-## 🚀 센서 설정 방법
+## 🔧 Sensor Components
 
-### 1. MicroPython 펌웨어 설치
-- Pico W의 BOOTSEL 버튼을 누른 채 USB 연결
-- `RPI_PICO_W_xx.uf2` 파일을 드라이브에 복사
+| Sensor | Measurement | Model |
+| ----- | --------------- | ---------------- |
+| Particulate matter | PM2.5 (ug/m³) | PMS7003 |
+| Carbon monoxide | CO (ppm) | ZE07-CO |
+| Temperature and humidity | Temperature (°C), Humidity (%) | SHT31 |
+| Battery | Voltage (V) | LP103665 3000mAh |
 
-### 2. Thonny 설치 및 설정
-- [Thonny](https://thonny.org/) 설치
-- 오른쪽 하단에서 **MicroPython (Raspberry Pi Pico)** 선택
+---
 
-### 3. 센서 코드 업로드
-- `sensor/main.py` 파일을 Thonny에서 열기
-- 센서 번호에 따라 이름 변경:
-```python
-  pico_ble = PicoBLE(name="AirStory1")  # 1번 센서
-  pico_ble = PicoBLE(name="AirStory2")  # 2번 센서
+## 🚀 Sensor Setup
+
+### 1. Install the MicroPython firmware
+
+- Connect the Pico W over USB while holding down its BOOTSEL button
+- Copy the `RPI_PICO_W_xx.uf2` file onto the drive that appears
+
+### 2. Install and configure Thonny
+
+- Install [Thonny](https://thonny.org/)
+- In the bottom right corner, select **MicroPython (Raspberry Pi Pico)**
+
+### 3. Upload the sensor code
+
+- Open `sensor/main.py` in Thonny
+- Change the name to match the sensor number:
+
 ```
-- **File > Save as > Raspberry Pi Pico** 에서 `main.py`로 저장
+pico_ble = PicoBLE(name="AirStory1")  # Sensor 1
+pico_ble = PicoBLE(name="AirStory2")  # Sensor 2
+```
+
+- Save it as `main.py` through **File > Save as > Raspberry Pi Pico**
 
 ---
 
-## 📲 앱 사용 방법
+## 📲 Using the App
 
-1. **그룹 설정** - Settings에서 Period, Group Name 입력 후 Save
-2. **센서 연결** - Connect Device 버튼 → Scan for Devices → AirStory 선택 → Finish Connection
-3. **세션 시작** - New Session 버튼 → 세션 이름 입력 → 측정 시작
-4. **세션 종료** - End Session → Save & Exit
+1. **Set up your group**: In Settings, enter the Period and Group Name, then tap Save
+2. **Connect the sensor**: Tap Connect Device, then Scan for Devices, select AirStory, and tap Finish Connection
+3. **Start a session**: Tap New Session, enter a session name, and begin measuring
+4. **End the session**: Tap End Session, then Save & Exit
 
 ---
 
-## 📁 프로젝트 구조
+## 📁 Project Structure
 
 ```
 AirStoryApp/
 ├── app/
-│   ├── index.tsx        # 홈 화면
-│   ├── connect.tsx      # BLE 연결 화면
-│   ├── session.tsx      # 데이터 수집 화면
-│   ├── history.tsx      # 기록 보기 화면
-│   ├── settings.tsx     # 설정 화면
-│   └── bleContext.tsx   # BLE 컨텍스트
+│   ├── index.tsx        # Home screen
+│   ├── connect.tsx      # BLE connection screen
+│   ├── session.tsx      # Data collection screen
+│   ├── history.tsx      # History screen
+│   ├── settings.tsx     # Settings screen
+│   └── bleContext.tsx   # BLE context
 └── sensor/
-    └── main.py          # Pico W 센서 코드
+    └── main.py          # Pico W sensor code
 ```
 
 ---
 
-## 🛠️ 개발 환경
+## 🛠️ Tech Stack
 
-- **앱**: React Native (Expo)
-- **센서**: MicroPython (Raspberry Pi Pico W)
-- **통신**: Bluetooth Low Energy (BLE)
+- **App**: React Native (Expo)
+- **Sensor**: MicroPython (Raspberry Pi Pico W)
+- **Communication**: Bluetooth Low Energy (BLE)
 
-## 📲 APK 다운로드
-[AirStory v1.0.0 다운로드](https://expo.dev/accounts/jshim/projects/AirStoryApp/builds/ef2763f9-f638-40ef-b695-766f9ea61688)
+---
+
+## 📲 APK Download
+
+[Download AirStory v1.0.0](https://expo.dev/accounts/jshim/projects/AirStoryApp/builds/ef2763f9-f638-40ef-b695-766f9ea61688)
