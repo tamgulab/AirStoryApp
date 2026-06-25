@@ -18,7 +18,7 @@ function RecordingBadge() {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
       <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: visible ? "#e53935" : "transparent", marginRight: 8 }} />
-      <Text style={{ color: "#e53935", fontSize: 13, fontWeight: "600" }}>Recording</Text>
+      <Text style={{ color: "#e53935", fontSize: 16, fontWeight: "600" }}>Recording</Text>
     </View>
   );
 }
@@ -55,6 +55,7 @@ export default function Session() {
   const [lon, setLon] = useState(0);
   const [battery, setBattery] = useState(0);
   const [className, setClassName] = useState("");
+  const [school, setSchool] = useState("");
   const [period, setPeriod] = useState("");
   const [group, setGroup] = useState("");
   const [isReceiving, setIsReceiving] = useState(false);
@@ -67,6 +68,8 @@ export default function Session() {
       const c = await AsyncStorage.getItem("className");
       const p = await AsyncStorage.getItem("period");
       const g = await AsyncStorage.getItem("group");
+      const s = await AsyncStorage.getItem("school");
+      if (s) setSchool(s);
       if (c) setClassName(c);
       if (p) setPeriod(p);
       if (g) setGroup(g);
@@ -128,7 +131,7 @@ export default function Session() {
     const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
     const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
     const sessionId = `${className}_${period}_${group}_${Date.now()}`;
-    const row = `${ts},${date},${time},${sessionId},${sessionName},Philadelphia High School for Girls,${className},${period},${group},"${lat},${lon}",${lat},${lon},${siteType},${pm25},${co},${temp},${hum}`;
+    const row = `${ts},${date},${time},${sessionId},${sessionName},${school},${className},${period},${group},"${lat},${lon}",${lat},${lon},${siteType},${pm25},${co},${temp},${hum}`;
     csvRows.current.push(row);
   }, [pm25, co, temp, hum]);
 
@@ -270,25 +273,25 @@ export default function Session() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", padding: 24, paddingTop: 60 },
-  header: { fontSize: 24, fontWeight: "bold", color: "#1a73e8", marginBottom: 20 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12, fontSize: 14, marginBottom: 16 },
+  header: { fontSize: 29, fontWeight: "bold", color: "#1a73e8", marginBottom: 20 },
+  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12, fontSize: 17, marginBottom: 16 },
   siteRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
-  label: { fontSize: 14, color: "#333", marginRight: 8 },
+  label: { fontSize: 17, color: "#333", marginRight: 8 },
   siteBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "#ddd" },
   siteBtnActive: { backgroundColor: "#1a73e8", borderColor: "#1a73e8" },
-  siteBtnText: { color: "#888", fontSize: 13 },
+  siteBtnText: { color: "#888", fontSize: 16 },
   siteBtnTextActive: { color: "#fff" },
-  info: { fontSize: 13, color: "#555", marginBottom: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: "600", color: "#333", marginTop: 16, marginBottom: 12 },
+  info: { fontSize: 16, color: "#555", marginBottom: 4 },
+  sectionTitle: { fontSize: 19, fontWeight: "600", color: "#333", marginTop: 16, marginBottom: 12 },
   dataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 24 },
   dataCard: { width: "46%", backgroundColor: "#f5f5f5", borderRadius: 12, padding: 16, alignItems: "center" },
   dataCardActive: { backgroundColor: "#1a73e8" },
-  dataValue: { fontSize: 28, fontWeight: "bold", color: "#333" },
-  dataLabel: { fontSize: 12, color: "#888", marginTop: 4 },
+  dataValue: { fontSize: 34, fontWeight: "bold", color: "#333" },
+  dataLabel: { fontSize: 15, color: "#888", marginTop: 4 },
   batteryWarning: { backgroundColor: "#ffebee", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, marginBottom: 16, width: "100%", alignItems: "center" },
-  batteryWarningText: { color: "#c62828", fontSize: 13, fontWeight: "600" },
+  batteryWarningText: { color: "#c62828", fontSize: 16, fontWeight: "600" },
   connectedBadge: { backgroundColor: "#e6f4ea", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 16, alignSelf: "flex-start" },
-  connectedText: { color: "#2e7d32", fontSize: 13, fontWeight: "600" },
+  connectedText: { color: "#2e7d32", fontSize: 16, fontWeight: "600" },
   endButton: { backgroundColor: "#1a73e8", padding: 16, borderRadius: 12, alignItems: "center", marginBottom: 40 },
-  endButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  endButtonText: { color: "#fff", fontSize: 19, fontWeight: "600" },
 });

@@ -10,6 +10,8 @@ export default function Index() {
   const [groupSet, setGroupSet] = useState(true);
   const [period, setPeriod] = useState("");
   const [group, setGroup] = useState("");
+  const [school, setSchool] = useState("");
+  const [instructor, setInstructor] = useState("");
 
   useFocusEffect(
     React.useCallback(() => {
@@ -21,6 +23,10 @@ export default function Index() {
     try {
       const g = await AsyncStorage.getItem("group");
       const p = await AsyncStorage.getItem("period");
+      const s = await AsyncStorage.getItem("school");
+      const c = await AsyncStorage.getItem("className");
+      setSchool(s || "");
+      setInstructor(c || "");
       if (!g) {
         setGroupSet(false);
       } else {
@@ -37,18 +43,26 @@ export default function Index() {
     <View style={styles.container}>
       <Text style={styles.title}>AirStory</Text>
       <Text style={styles.subtitle}>TAMGU Lab</Text>
-      <Text style={styles.school}>Philadelphia High School for Girls</Text>
+      {school ? <Text style={styles.school}>{school}</Text> : null}
       {groupSet && period && group ? (
-        <Text style={styles.groupInfo}>Mr. Sikich | Period {period} | Group {group}</Text>
+        <Text style={styles.groupInfo}>
+          {instructor ? `${instructor} | ` : ""}Period {period} | Group {group}
+        </Text>
       ) : null}
 
       {!groupSet && (
-        <TouchableOpacity
-          style={styles.warningBadge}
-          onPress={() => router.push("/settings")}
-        >
-          <Text style={styles.warningText}>Please set your Group first!</Text>
-        </TouchableOpacity>
+        <View style={styles.warningBadge}>
+          <Text style={styles.warningTitle}>Group not set</Text>
+          <Text style={styles.warningText}>
+            Set your Group in Settings before starting a session.
+          </Text>
+          <TouchableOpacity
+            style={styles.warningButton}
+            onPress={() => router.push("/settings")}
+          >
+            <Text style={styles.warningButtonText}>Go to Settings →</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {connectedDevice ? (
@@ -98,19 +112,22 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 24 },
-  title: { fontSize: 32, fontWeight: "bold", color: "#1a73e8", marginBottom: 4 },
-  subtitle: { fontSize: 18, color: "#333", marginBottom: 8 },
-  school: { fontSize: 13, color: "#888", marginBottom: 4, textAlign: "center" },
-  groupInfo: { fontSize: 13, color: "#1a73e8", marginBottom: 16, fontWeight: "600" },
-  warningBadge: { backgroundColor: "#fff3e0", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, marginBottom: 16, width: "100%", alignItems: "center" },
-  warningText: { color: "#e65100", fontSize: 13, fontWeight: "600" },
+  title: { fontSize: 38, fontWeight: "bold", color: "#1a73e8", marginBottom: 4 },
+  subtitle: { fontSize: 22, color: "#333", marginBottom: 8 },
+  school: { fontSize: 16, color: "#888", marginBottom: 4, textAlign: "center" },
+  groupInfo: { fontSize: 16, color: "#1a73e8", marginBottom: 16, fontWeight: "600" },
+  warningBadge: { backgroundColor: "#fff3e0", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 16, width: "100%", alignItems: "center" },
+  warningTitle: { color: "#e65100", fontSize: 17, fontWeight: "700", marginBottom: 4 },
+  warningText: { color: "#e65100", fontSize: 16, fontWeight: "500", textAlign: "center", marginBottom: 12 },
+  warningButton: { backgroundColor: "#e65100", borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, alignItems: "center" },
+  warningButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   connectedBadge: { backgroundColor: "#e6f4ea", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 24 },
-  connectedText: { color: "#2e7d32", fontSize: 13, fontWeight: "600" },
+  connectedText: { color: "#2e7d32", fontSize: 16, fontWeight: "600" },
   disconnectedBadge: { backgroundColor: "#f5f5f5", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 24 },
-  disconnectedText: { color: "#888", fontSize: 13 },
+  disconnectedText: { color: "#888", fontSize: 16 },
   buttonContainer: { width: "100%", gap: 12 },
   buttonPrimary: { backgroundColor: "#1a73e8", padding: 16, borderRadius: 12, alignItems: "center" },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  buttonText: { color: "#fff", fontSize: 19, fontWeight: "600" },
   buttonOutline: { borderWidth: 1.5, borderColor: "#1a73e8", padding: 16, borderRadius: 12, alignItems: "center" },
-  buttonOutlineText: { color: "#1a73e8", fontSize: 16, fontWeight: "600" },
+  buttonOutlineText: { color: "#1a73e8", fontSize: 19, fontWeight: "600" },
 });
