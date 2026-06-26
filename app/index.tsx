@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { logout } from "./api/auth";
 import { useBLE } from "./bleContext";
 
 export default function Index() {
@@ -105,6 +106,17 @@ export default function Index() {
         >
           <Text style={styles.buttonOutlineText}>Settings</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          onPress={async () => {
+            // Clearing the Firebase session fires onAuthStateChanged; the router gate
+            // then redirects to /login.
+            await logout();
+          }}
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -130,4 +142,6 @@ const styles = StyleSheet.create({
   buttonText: { color: "#fff", fontSize: 19, fontWeight: "600" },
   buttonOutline: { borderWidth: 1.5, borderColor: "#1a73e8", padding: 16, borderRadius: 12, alignItems: "center" },
   buttonOutlineText: { color: "#1a73e8", fontSize: 19, fontWeight: "600" },
+  signOutBtn: { padding: 14, borderRadius: 12, alignItems: "center", marginTop: 4 },
+  signOutText: { color: "#c5221f", fontSize: 15, fontWeight: "600" },
 });
