@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   title: {
-    fontSize: 24,
+    fontSize: 29,
     fontWeight: "bold",
     color: "#1a73e8",
     marginBottom: 16,
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#888",
     marginTop: 40,
-    fontSize: 14,
+    fontSize: 17,
   },
   sessionWrapper: {
     marginBottom: 10,
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   exportText: {
-    fontSize: 11,
+    fontSize: 14,
     color: "#1a73e8",
     marginTop: 4,
   },
@@ -234,12 +234,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sessionName: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: "600",
     color: "#333",
   },
   sessionTime: {
-    fontSize: 12,
+    fontSize: 15,
     color: "#888",
     marginTop: 4,
   },
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   csvText: {
     fontFamily: "Courier",
-    fontSize: 12,
+    fontSize: 15,
     color: "#333",
   },
   buttonPrimary: {
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: "600",
   },
   buttonHome: {
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   },
   buttonHomeText: {
     color: "#1a73e8",
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: "600",
   },
 });

@@ -7,6 +7,8 @@ import { manager, useBLE } from "./bleContext";
 export default function Settings() {
   const router = useRouter();
   const { connectedDevice, setConnectedDevice } = useBLE();
+  const [school, setSchool] = useState("");
+  const [instructor, setInstructor] = useState("");
   const [period, setPeriod] = useState("");
   const [group, setGroup] = useState("");
 
@@ -16,8 +18,12 @@ export default function Settings() {
 
   const loadSettings = async () => {
     try {
+      const s = await AsyncStorage.getItem("school");
+      const c = await AsyncStorage.getItem("className");
       const p = await AsyncStorage.getItem("period");
       const g = await AsyncStorage.getItem("group");
+      if (s) setSchool(s);
+      if (c) setInstructor(c);
       if (p) setPeriod(p);
       if (g) setGroup(g);
     } catch (e) {
@@ -29,13 +35,19 @@ export default function Settings() {
     return text.replace(/[^a-zA-Z0-9가-힣]/g, "").substring(0, 20);
   };
 
+  // School / instructor are free-text names; only strip CSV-breaking characters.
+  const sanitizeName = (text: string) => {
+    return text.replace(/[",\n\r]/g, "").substring(0, 60);
+  };
+
   const saveSettings = async () => {
     if (!period || !group) {
       alert("Please fill in all fields.");
       return;
     }
     try {
-      await AsyncStorage.setItem("className", "Mr. Sikich");
+      await AsyncStorage.setItem("school", school.trim());
+      await AsyncStorage.setItem("className", instructor.trim());
       await AsyncStorage.setItem("period", period);
       await AsyncStorage.setItem("group", sanitize(group));
       router.replace("/");
@@ -75,12 +87,25 @@ const resetAll = async () => {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Group Settings</Text>
-      <Text style={styles.subtitle}>Philadelphia High School for Girls</Text>
+      <Text style={styles.subtitle}>Set your school and class details</Text>
+
+      <Text style={styles.label}>School</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="e.g. Lincoln High School"
+        value={school}
+        onChangeText={(text) => setSchool(sanitizeName(text))}
+        maxLength={60}
+      />
 
       <Text style={styles.label}>Class (Instructor)</Text>
-      <View style={styles.fixedInput}>
-        <Text style={styles.fixedText}>Mr. Sikich</Text>
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="e.g. Mr. Smith"
+        value={instructor}
+        onChangeText={(text) => setInstructor(sanitizeName(text))}
+        maxLength={60}
+      />
 
       <Text style={styles.label}>Period</Text>
       <TextInput
@@ -124,40 +149,28 @@ const styles = StyleSheet.create({
     paddingTop: 60,
   },
   title: {
-    fontSize: 24,
+    fontSize: 29,
     fontWeight: "bold",
     color: "#1a73e8",
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 16,
     color: "#888",
     marginBottom: 32,
   },
   label: {
-    fontSize: 14,
+    fontSize: 17,
     color: "#333",
     marginBottom: 8,
     fontWeight: "600",
-  },
-  fixedInput: {
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 20,
-    backgroundColor: "#f9f9f9",
-  },
-  fixedText: {
-    fontSize: 14,
-    color: "#888",
   },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 10,
     padding: 12,
-    fontSize: 14,
+    fontSize: 17,
     marginBottom: 20,
   },
   buttonPrimary: {
@@ -169,7 +182,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: "600",
   },
   buttonReset: {
@@ -182,7 +195,7 @@ const styles = StyleSheet.create({
   },
   buttonResetText: {
     color: "red",
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: "600",
   },
   back: {
@@ -191,6 +204,6 @@ const styles = StyleSheet.create({
   },
   backText: {
     color: "#1a73e8",
-    fontSize: 14,
+    fontSize: 17,
   },
 });
