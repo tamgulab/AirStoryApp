@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, FlatList, PermissionsAndroid, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Device } from "react-native-ble-plx";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { manager, useBLE } from "./bleContext";
 
 export default function Connect() {
@@ -10,6 +11,9 @@ export default function Connect() {
   const { setConnectedDevice, connectedDevice } = useBLE();
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
+  // The app draws edge to edge, so styles.container's 24 of bottom padding sits behind the
+  // Android navigation bar and the "Back" link lands under it. Add the bar's height to it.
+  const insets = useSafeAreaInsets();
 
   const requestPermissions = async () => {
     if (Platform.OS === "android") {
@@ -63,7 +67,7 @@ const connectDevice = async (device: Device) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
       <Text style={styles.title}>{"Let's connect!"}</Text>
       <Text style={styles.subtitle}>Please select the device to connect</Text>
       {scanning && <ActivityIndicator size="large" color="#1a73e8" style={{ marginVertical: 20 }} />}

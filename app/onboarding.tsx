@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   extractInviteToken,
   getInvitePreview,
@@ -43,6 +44,9 @@ function friendlyAuthError(e: any): string {
 
 export default function Onboarding() {
   const { user, refreshMe } = useAuth();
+  // Both the role picker and the form end in a link ("Sign out" / "Back") that the navigation
+  // bar covers once the content is tall enough to scroll.
+  const insets = useSafeAreaInsets();
   // Two entry paths: a signed-out visitor creating an account, or a Firebase user who has no app
   // account yet. The latter already has an identity, so we skip email/password entirely.
   const isSignedIn = Boolean(user);
@@ -157,7 +161,7 @@ export default function Onboarding() {
 
   if (mode === "choose") {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 28 }]}>
         <View style={styles.iconWrap}>
           <Ionicons name="person-add-outline" size={40} color="#1a73e8" />
         </View>
@@ -203,7 +207,7 @@ export default function Onboarding() {
   return (
     <KeyboardAwareScrollView
       style={styles.flex}
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 28 }]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       bottomOffset={FOCUS_OFFSET}

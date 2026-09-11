@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { convertCsvToImportRows, fetchUploadedSessionCodes, parseCsvLine, uploadMeasurements } from "./airstoryApi";
 import { updateMyProfile } from "./api/auth";
 import { useAuth } from "./authContext";
@@ -25,6 +26,9 @@ export default function History() {
   const router = useRouter();
   const { profile, activeWorkspaceId, activeMembership, cachedWorkspaceIds, refreshMe } = useAuth();
   const { structure } = useClassStructure(activeWorkspaceId);
+  // Edge-to-edge: the container's 40 of bottom padding is behind the navigation bar, which
+  // leaves "Go to Home" under it. Same for the upload sheet's Cancel link.
+  const insets = useSafeAreaInsets();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [csvCache, setCsvCache] = useState<Record<string, string>>({});
@@ -340,7 +344,7 @@ export default function History() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + 40 }]}>
       <Text style={styles.title}>Session History</Text>
 
       <FlatList
@@ -430,7 +434,9 @@ export default function History() {
         onRequestClose={() => setPendingSession(null)}
       >
         <View style={styles.modalBackdrop}>
-          <ScrollView contentContainerStyle={styles.modalScroll}>
+          <ScrollView
+            contentContainerStyle={[styles.modalScroll, { paddingBottom: insets.bottom + 20 }]}
+          >
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Confirm upload</Text>
               <Text style={styles.modalBody}>

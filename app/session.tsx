@@ -3,6 +3,7 @@ import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./authContext";
 import { manager, useBLE } from "./bleContext";
 
@@ -27,6 +28,10 @@ export default function Session() {
   const router = useRouter();
   const { connectedDevice } = useBLE();
   const { profile } = useAuth();
+  // Padding on a ScrollView's own style is not scrollable space, so the only room below
+  // "End Session" was its 40 of margin — less than the navigation bar, which is why the button
+  // could not be tapped. The inset goes on the content container so it scrolls clear.
+  const insets = useSafeAreaInsets();
 
   // Account-synced profile (cached offline) stamps the session metadata into each CSV row.
   const className = profile?.instructor || "";
@@ -174,7 +179,7 @@ export default function Session() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom }}>
       <Text style={styles.header}>New Session</Text>
 {connectedDevice && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 }}>

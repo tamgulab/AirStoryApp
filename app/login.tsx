@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { login } from "./api/auth";
 
 /** Gap kept between the focused field and the top of the keyboard. */
@@ -30,6 +31,9 @@ function friendlyAuthError(e: any): string {
 
 export default function Login() {
   const router = useRouter();
+  // The card is centred in a full-bleed scroll view. Without this the "Need an account? Sign up"
+  // link sits behind the Android navigation bar whenever the card is taller than the screen.
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +62,7 @@ export default function Login() {
   return (
     <KeyboardAwareScrollView
       style={styles.flex}
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       bottomOffset={FOCUS_OFFSET}

@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { logout } from "./api/auth";
 import { useAuth } from "./authContext";
 import { useBLE } from "./bleContext";
@@ -8,6 +9,10 @@ export default function Index() {
   const router = useRouter();
   const { connectedDevice } = useBLE();
   const { profile, activeMembership, hasClassWorkspace } = useAuth();
+  // Nothing here is pinned to the bottom, but with both warning badges showing the button
+  // stack reaches the bottom edge on short screens and "Sign Out" falls behind the navigation
+  // bar. Centring then happens within the visible area rather than the whole display.
+  const insets = useSafeAreaInsets();
 
   // Profile is the source of truth (synced to the account); cached for offline launches.
   const school = profile?.schoolName || "";
@@ -19,7 +24,7 @@ export default function Index() {
   const className = activeMembership?.workspace_name || profile?.workspaceName || "";
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
       <Text style={styles.title}>AirStory</Text>
       <Text style={styles.subtitle}>TAMGU Lab</Text>
       {className ? <Text style={styles.className}>{className}</Text> : null}
