@@ -9,6 +9,40 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./authContext";
 import { manager, useBLE } from "./bleContext";
 
+// Battery voltage (5th CSV field from the board) to a display percentage, interpolated linearly
+// between these breakpoints and clamped outside them. 100% down to 0% in 10% steps, in mV.
+//
+// Source: Meshtastic firmware src/power.h (OCV_ARRAY), an open-source table with no cited origin.
+// It agrees with TI application note SLUAAR3, which gives 3.72 V at rest as 50%.
+// It describes a cell at rest. This board measures under load from the dust sensor fan and the
+// BLE radio, so the figure still overstates remaining charge by some unknown amount.
+// The cell is a generic 103665 with no manufacturer discharge curve. Replace this table with
+// measurements from an actual discharge of this board when those exist.
+const BATTERY_CURVE_MV = [4190, 4050, 3990, 3890, 3800, 3720, 3630, 3530, 3420, 3300, 3100];
+
+function batteryPercent(volts: number) {
+  const mv = volts * 1000;
+  const curve = BATTERY_CURVE_MV;
+  if (mv >= curve[0]) return 100;
+  if (mv <= curve[curve.length - 1]) return 0;
+  for (let i = 0; i < curve.length - 1; i++) {
+    const hi = curve[i];
+    const lo = curve[i + 1];
+    if (mv <= hi && mv >= lo) {
+      const pctLo = (curve.length - 2 - i) * 10;
+      return Math.round(pctLo + ((mv - lo) / (hi - lo)) * 10);
+    }
+  }
+  return 0;
+}
+
+// Colour bands, defined by voltage and converted through the curve so they move with it.
+// Orange: at or below 3.5 V, where the firmware switches its green LED off (main.py:175), so the
+// app and the board agree on "low". Red: at or below 3.3 V, where the curve's last 10% begins and
+// falls steeply to empty; under load the cell reaches the 3.0 V cutoff soon after.
+const BATTERY_LOW_PCT = batteryPercent(3.5);
+const BATTERY_CRITICAL_PCT = batteryPercent(3.3);
+
 const SERVICE_UUID = "0000181A-0000-1000-8000-00805F9B34FB";
 const CHAR_UUID = "00002A6E-0000-1000-8000-00805F9B34FB";
 
@@ -102,6 +136,7 @@ export default function Session() {
   const [lat, setLat] = useState(0);
   const [lon, setLon] = useState(0);
   const [battery, setBattery] = useState(0);
+  const batteryPct = batteryPercent(battery);
   const [isReceiving, setIsReceiving] = useState(false);
 
   const csvRows = useRef<string[]>([]);
@@ -267,20 +302,20 @@ export default function Session() {
             <View style={[styles.connectedBadge, { 
               backgroundColor: 
                 battery >= 4.2 ? "#e8f0fe" :
-                Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 20 ? "#ffebee" :
-                Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 25 ? "#fff3e0" :
+                batteryPct <= BATTERY_CRITICAL_PCT ? "#ffebee" :
+                batteryPct <= BATTERY_LOW_PCT ? "#fff3e0" :
                 "#e6f4ea"
             }]}>
               <Text style={[styles.connectedText, { 
                 color: 
                   battery >= 4.2 ? "#1a73e8" :
-                  Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 20 ? "#c62828" :
-                  Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100))) <= 25 ? "#e65100" :
+                  batteryPct <= BATTERY_CRITICAL_PCT ? "#c62828" :
+                  batteryPct <= BATTERY_LOW_PCT ? "#e65100" :
                   "#2e7d32"
               }]}>
 {battery >= 4.2 
-                  ? `🔋⚡ (${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%)`
-                  : `🔋 ${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%`}
+                  ? `🔋⚡ (${batteryPct}%)`
+                  : `🔋 ${batteryPct}%`}
               </Text>
             </View>
           )}
