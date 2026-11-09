@@ -64,7 +64,7 @@ export default function Session() {
   const router = useRouter();
   const navigation = useNavigation();
   const { connectedDevice } = useBLE();
-  const { profile } = useAuth();
+  const { profile, setAutoRefreshPaused } = useAuth();
   // All padding lives on the content container, never on the ScrollView's own style. Style
   // padding offsets the content (paddingTop pushed it down 60) without growing the scroll range,
   // so the bottom 60 of content could never scroll into view and "End Session" stayed under the
@@ -164,11 +164,15 @@ export default function Session() {
       clearInterval(timerRef.current);
       manager.stopDeviceScan();
       stopMonitoring();
+      setAutoRefreshPaused(false);
     };
   }, []);
 
   const startRecording = () => {
     if (!canRecord || recording) return;
+    // Every row of this session is stamped with the current placement; a background /auth/me
+    // refresh must not change it halfway through.
+    setAutoRefreshPaused(true);
     setSessionName(sessionName.trim());
     setStartTime(new Date().toISOString());
     setDuration(0);
@@ -275,6 +279,9 @@ export default function Session() {
     console.log("Saved to:", filePath);
     // Saved: this screen stays under History, and removing it later must not warn about loss.
     skipLeaveConfirmRef.current = true;
+    // Recording is over. This screen stays mounted under History, so its unmount cleanup won't
+    // run yet; resume background refreshes now.
+    setAutoRefreshPaused(false);
     router.push("/history");
     // Ending a session keeps the device connected for the next one. Pushing History leaves this
     // screen mounted underneath, so stop its notification here rather than waiting for unmount.

@@ -1,14 +1,38 @@
-import { useRouter } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { AppState, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { logout } from "./api/auth";
-import { useAuth } from "./authContext";
+import { ME_REFRESH_INTERVAL_MS, useAuth } from "./authContext";
 import { useBLE } from "./bleContext";
 
 export default function Index() {
   const router = useRouter();
   const { connectedDevice } = useBLE();
-  const { profile, activeMembership, hasClassWorkspace } = useAuth();
+  const { profile, role, activeMembership, hasClassWorkspace, refreshIfStale } = useAuth();
+  const isTeacher = role === "teacher";
+
+  // Pick up changes made on the web (a teacher moving this student's group) while Home is on
+  // screen: once when it comes into view, then every minute. The timer exists only while Home is
+  // focused AND the app is in the foreground; the foreground refresh in AuthProvider covers the
+  // return. Every trigger goes through refreshIfStale, whose throttle and in-flight guard keep the
+  // total at one /auth/me per minute however they overlap. No recording check is needed here: a
+  // recording only happens on the session screen, which covers Home and so stops this timer.
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => setAppActive(s === "active"));
+    return () => sub.remove();
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!appActive) return;
+      // Call first, then start the timer, so each tick lands at least a full interval after the
+      // attempt this call may have made.
+      refreshIfStale();
+      const id = setInterval(refreshIfStale, ME_REFRESH_INTERVAL_MS);
+      return () => clearInterval(id);
+    }, [appActive, refreshIfStale])
+  );
   // Nothing here is pinned to the bottom, but with both warning badges showing the button
   // stack reaches the bottom edge on short screens and "Sign Out" falls behind the navigation
   // bar. Centring then happens within the visible area rather than the whole display.
@@ -44,7 +68,8 @@ export default function Index() {
             Your teacher needs to invite you to a class before you can record or upload data.
           </Text>
         </View>
-      ) : !groupSet ? (
+      ) : !groupSet && !isTeacher ? (
+        // Students only: a teacher has no group, and Settings no longer offers one to pick.
         <View style={styles.warningBadge}>
           <Text style={styles.warningTitle}>Group not set</Text>
           <Text style={styles.warningText}>

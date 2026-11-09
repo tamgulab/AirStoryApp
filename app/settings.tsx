@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,11 +13,41 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { updateMyProfile } from "./api/auth";
-import { useAuth } from "./authContext";
+import { getMe, updateMyProfile } from "./api/auth";
+import { API_BASE } from "./api/http"; // TEMP-DEBUG(profile-save)
+import { type Membership, type Profile, useAuth } from "./authContext";
 import { useBLE } from "./bleContext";
 import { ChipPicker } from "./components/ChipPicker";
 import { groupsFor, normalizeGroup, normalizePeriod, useClassStructure } from "./useClassStructure";
+
+/** The profile fields this screen edits, in their normalised form. */
+type Field = "instructor" | "period" | "group";
+type FieldValues = Record<Field, string>;
+const FIELDS: Field[] = ["instructor", "period", "group"];
+const EMPTY_FIELDS: FieldValues = { instructor: "", period: "", group: "" };
+const FIELD_LABELS: Record<Field, string> = {
+  instructor: "Class (Instructor)",
+  period: "Period",
+  group: "Group",
+};
+
+// normalizePeriod/normalizeGroup only matter for values written before pickers existed
+// ("1" -> "P1"); picker output is already correct.
+function storedFields(profile: Profile | null): FieldValues {
+  return {
+    instructor: profile?.instructor || "",
+    period: normalizePeriod(profile?.period),
+    group: normalizeGroup(profile?.groupCode),
+  };
+}
+
+function membershipFields(m: Membership): FieldValues {
+  return {
+    instructor: m.profile?.instructor || "",
+    period: normalizePeriod(m.profile?.period),
+    group: normalizeGroup(m.profile?.group_code),
+  };
+}
 
 export default function Settings() {
   const router = useRouter();
@@ -37,24 +67,57 @@ export default function Settings() {
   const { structure, loading: loadingStructure, refresh: refreshStructure } =
     useClassStructure(activeWorkspaceId);
 
-  // Instructor is class-level identity and stays teacher-only. Period and group are the user's
-  // own placement: the backend's PATCH /auth/me/profile is requireAuth with no role check, and a
-  // student's group genuinely changes week to week, so both roles pick their own. School is not
-  // here at all — it belongs to the workspace and is set on the web.
+  // Instructor is editable by teachers only. Period and group are a student's placement; a teacher
+  // has neither, so the pickers are hidden for them (their user_profiles row still has the columns,
+  // but nothing anyone sees reads them). School is not editable here — it belongs to the workspace
+  // and is set on the web.
   const [instructor, setInstructor] = useState("");
   const [period, setPeriod] = useState("");
   const [group, setGroup] = useState("");
+  // The stored value each field was loaded from: what the app last saw on the server. A field is
+  // "edited" exactly when its form value differs from its base. Editing a field and putting it
+  // back makes it clean again.
+  const [base, setBase] = useState<FieldValues>(EMPTY_FIELDS);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
-  // Seed the form from the active workspace's profile. normalizePeriod/normalizeGroup only matter
-  // for values written before pickers existed ("1" -> "P1"); picker output is already correct.
+  const form: FieldValues = { instructor, period, group };
+  // Each role sends only what it can edit: teachers the instructor, students their placement.
+  const editableFields: Field[] = isTeacher ? ["instructor"] : ["period", "group"];
+  const editedFields = editableFields.filter((f) => form[f] !== base[f]);
+
+  const applyFields = (values: FieldValues) => {
+    setInstructor(values.instructor);
+    setPeriod(values.period);
+    setGroup(values.group);
+  };
+
+  // Seed the form from the active workspace's profile, and re-seed when a refresh brings in new
+  // stored values — but only into fields the user has not edited. An edited field keeps both its
+  // value and its base, so the pre-save check below still sees that the server moved underneath it.
+  // Switching workspace is a different form entirely, so it resets everything.
+  const seededWorkspaceRef = useRef<string | null>(null);
   useEffect(() => {
-    setInstructor(profile?.instructor || "");
-    setPeriod(normalizePeriod(profile?.period));
-    setGroup(normalizeGroup(profile?.groupCode));
-  }, [profile?.instructor, profile?.period, profile?.groupCode]);
+    const stored = storedFields(profile);
+    const workspaceId = profile?.workspaceId ?? null;
+    const switched = seededWorkspaceRef.current !== workspaceId;
+    seededWorkspaceRef.current = workspaceId;
+    // `form` and `base` are this render's values: the effect runs right after the render in which
+    // the stored profile changed, so they are current.
+    const nextForm = { ...form };
+    const nextBase = { ...base };
+    for (const f of FIELDS) {
+      if (switched || form[f] === base[f]) {
+        nextForm[f] = stored[f];
+        nextBase[f] = stored[f];
+      }
+    }
+    applyFields(nextForm);
+    setBase(nextBase);
+    // Re-seeding is driven by the stored values only; form/base are read, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.workspaceId, profile?.instructor, profile?.period, profile?.groupCode]);
 
   // Free-text names: strip only CSV-breaking characters (matches the web sanitizer).
   const sanitizeName = (t: string) => t.replace(/[",\n\r]/g, "").substring(0, 60);
@@ -76,32 +139,121 @@ export default function Settings() {
     await setActiveWorkspace(workspaceId);
   };
 
-  const saveProfile = async () => {
-    setError("");
-    // Profiles are per-workspace, so there is nothing to save into until the class workspace
-    // is known (a brand-new account in Public only, or an offline first launch).
-    if (!activeWorkspaceId) {
-      setError("No class workspace yet — your teacher needs to add you to a class first.");
-      return;
-    }
+  // Sends only the fields edited on this screen. Anything untouched is left out, and the backend
+  // keeps its stored value for omitted fields, so a placement changed elsewhere is never
+  // overwritten with a copy this screen merely displayed.
+  const commitEdits = async (fields: Field[]) => {
+    if (!activeWorkspaceId) return;
     setSaving(true);
     try {
-      // schoolCode is deliberately omitted: the field is optional, and the backend preserves the
-      // existing value when it is absent. The app no longer owns that column.
+      console.log("[profile-save] commitEdits fields", JSON.stringify(fields)); // TEMP-DEBUG(profile-save)
       await updateMyProfile({
         workspaceId: activeWorkspaceId,
-        instructor: instructor.trim(),
-        period,
-        groupCode: group,
+        ...(fields.includes("instructor") ? { instructor: instructor.trim() } : {}),
+        ...(fields.includes("period") ? { period } : {}),
+        ...(fields.includes("group") ? { groupCode: group } : {}),
       });
       // Pull the saved values back and refresh the offline cache, then return home.
       await refreshMe();
+      console.log("[profile-save] PATCH ok, refreshMe done, navigating home"); // TEMP-DEBUG(profile-save)
       router.replace("/");
     } catch (e: any) {
+      console.log("[profile-save] commitEdits error", String(e?.message || e)); // TEMP-DEBUG(profile-save)
       setError(e?.message || "Could not save. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
+  };
+
+  // The server moved an edited field after this screen loaded it. Never pick a side silently.
+  const askAboutConflicts = (conflicts: Field[], server: FieldValues) => {
+    const lines = conflicts
+      .map((f) => `${FIELD_LABELS[f]}: now ${server[f] || "not set"} (you chose ${form[f] || "not set"})`)
+      .join("\n");
+    Alert.alert(
+      "Changed since you opened Settings",
+      `${lines}\n\nThis may have been changed by your teacher. Which should be kept?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Use Updated",
+          onPress: () => {
+            // Take the server's values for the conflicting fields and save nothing. Other edits
+            // stay on screen, unsaved, for the user to review and save again.
+            const nextForm = { ...form };
+            const nextBase = { ...base };
+            for (const f of conflicts) {
+              nextForm[f] = server[f];
+              nextBase[f] = server[f];
+            }
+            applyFields(nextForm);
+            setBase(nextBase);
+            refreshMe().catch(() => {});
+          },
+        },
+        { text: "Keep Mine", style: "destructive", onPress: () => commitEdits(editedFields) },
+      ]
+    );
+  };
+
+  const saveProfile = async () => {
+    setError("");
+    // TEMP-DEBUG(profile-save) start
+    console.log("[profile-save] tap", JSON.stringify({
+      apiBase: API_BASE,
+      workspaceId: activeWorkspaceId,
+      role,
+      base,
+      form,
+      editedFields,
+    }));
+    // TEMP-DEBUG(profile-save) end
+    // Profiles are per-workspace, so there is nothing to save into until the class workspace
+    // is known (a brand-new account in Public only, or an offline first launch).
+    if (!activeWorkspaceId) {
+      setError("No class workspace yet — your teacher needs to add you to a class first.");
+      console.log("[profile-save] early return: no activeWorkspaceId"); // TEMP-DEBUG(profile-save)
+      return;
+    }
+    if (!editedFields.length) {
+      console.log("[profile-save] early return: nothing edited, no PATCH sent"); // TEMP-DEBUG(profile-save)
+      router.replace("/");
+      return;
+    }
+    setSaving(true);
+    let server: FieldValues;
+    try {
+      // What the server holds now, not what the app last fetched. Saving needs the network
+      // anyway, so a failure here is reported the same way a failed save would be.
+      const me = await getMe();
+      const membership: Membership | undefined = (me?.memberships || []).find(
+        (m: Membership) => m.workspace_id === activeWorkspaceId
+      );
+      if (!membership) {
+        console.log("[profile-save] early return: workspace not in /auth/me memberships"); // TEMP-DEBUG(profile-save)
+        setError("You are no longer in this class. Pull down to refresh.");
+        setSaving(false);
+        return;
+      }
+      server = membershipFields(membership);
+      console.log("[profile-save] server now", JSON.stringify(server)); // TEMP-DEBUG(profile-save)
+    } catch (e: any) {
+      console.log("[profile-save] early return: pre-save getMe failed", String(e?.message || e)); // TEMP-DEBUG(profile-save)
+      setError(e?.message || "Could not check for changes. Check your connection and try again.");
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    // A conflict is an edited field whose stored value moved since it was loaded here, to
+    // something other than what the user chose. (If it moved to the same value, there is nothing
+    // to decide.)
+    const conflicts = editedFields.filter((f) => server[f] !== base[f] && server[f] !== form[f]);
+    if (conflicts.length) {
+      console.log("[profile-save] conflict dialog, no PATCH yet", JSON.stringify(conflicts)); // TEMP-DEBUG(profile-save)
+      askAboutConflicts(conflicts, server);
+      return;
+    }
+    await commitEdits(editedFields);
   };
 
   const disconnectDevice = () => {
@@ -214,23 +366,28 @@ export default function Settings() {
             readOnly("Class (Instructor)", profile?.instructor || "")
           )}
 
-          {/* Item 4: options come from the workspace's class structure, not free text. */}
-          <ChipPicker
-            label="Period"
-            options={structure?.periods ?? []}
-            value={period}
-            onChange={setPeriod}
-            disabled={saving}
-          />
-          <ChipPicker
-            label="Group"
-            options={groupsFor(structure, period || structure?.periods[0] || "")}
-            value={group}
-            onChange={setGroup}
-            disabled={saving}
-          />
-          {loadingStructure ? (
-            <Text style={styles.hint}>Checking the latest class options…</Text>
+          {/* Item 4: options come from the workspace's class structure, not free text.
+              Students only: a teacher has no period or group. */}
+          {!isTeacher ? (
+            <>
+              <ChipPicker
+                label="Period"
+                options={structure?.periods ?? []}
+                value={period}
+                onChange={setPeriod}
+                disabled={saving}
+              />
+              <ChipPicker
+                label="Group"
+                options={groupsFor(structure, period || structure?.periods[0] || "")}
+                value={group}
+                onChange={setGroup}
+                disabled={saving}
+              />
+              {loadingStructure ? (
+                <Text style={styles.hint}>Checking the latest class options…</Text>
+              ) : null}
+            </>
           ) : null}
 
           {!isTeacher ? (

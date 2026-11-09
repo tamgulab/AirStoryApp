@@ -38,6 +38,10 @@ async function getIdToken(): Promise<string | null> {
 }
 
 export async function apiRequest(path: string, options: RequestInit = {}): Promise<any> {
+  // TEMP-DEBUG(profile-save) start: logs the profile PATCH round trip. Remove every TEMP-DEBUG(profile-save) line.
+  const debugSave = path === "/auth/me/profile";
+  if (debugSave) console.log("[profile-save] request", options.method, `${API_BASE}${path}`, options.body);
+  // TEMP-DEBUG(profile-save) end
   const token = await getIdToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -59,6 +63,7 @@ export async function apiRequest(path: string, options: RequestInit = {}): Promi
     // An abort means the server accepted the connection but never replied — distinct from an
     // outright network failure, and worth saying so since it usually means the API is asleep.
     // React Native has not been consistent about the rejection's `name`, so trust our own flag.
+    if (debugSave) console.log("[profile-save] fetch failed", timedOut ? "timeout" : String(e?.message || e)); // TEMP-DEBUG(profile-save)
     if (timedOut || e?.name === "AbortError") {
       throw new Error(
         `Could not reach the AirStory server — it did not respond within ${REQUEST_TIMEOUT_MS / 1000}s. ` +
@@ -70,10 +75,12 @@ export async function apiRequest(path: string, options: RequestInit = {}): Promi
     clearTimeout(timeoutId);
   }
 
+  if (debugSave) console.log("[profile-save] status", response.status); // TEMP-DEBUG(profile-save)
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {
       const data = await response.json();
+      if (debugSave) console.log("[profile-save] error body", JSON.stringify(data)); // TEMP-DEBUG(profile-save)
       message = data.error || message;
     } catch {
       // ignore JSON parse error
@@ -82,5 +89,12 @@ export async function apiRequest(path: string, options: RequestInit = {}): Promi
   }
 
   if (response.status === 204) return null;
+  // TEMP-DEBUG(profile-save) start
+  if (debugSave) {
+    const body = await response.json();
+    console.log("[profile-save] response body", JSON.stringify(body));
+    return body;
+  }
+  // TEMP-DEBUG(profile-save) end
   return response.json();
 }

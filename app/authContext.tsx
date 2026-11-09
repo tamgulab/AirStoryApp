@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { auth } from "./api/firebase";
 import { getMe } from "./api/auth";
 
@@ -15,6 +16,16 @@ const PROFILE_CACHE_KEY = "airstory_profile_cache_v2";
 const LEGACY_PROFILE_CACHE_KEY = "airstory_profile_cache";
 /** The workspace the user last chose explicitly. */
 const ACTIVE_WORKSPACE_KEY = "airstory_active_workspace";
+/**
+ * Automatic /auth/me refreshes (foreground return, Home focus, Home polling) run at most once per
+ * this interval. Home's poll timer uses the same value.
+ */
+export const ME_REFRESH_INTERVAL_MS = 60_000;
+/**
+ * Timers are not exact. Without this slack, a poll tick landing a few ms short of the interval
+ * would be throttled and the effective period would double to 120 s.
+ */
+const TIMER_SLACK_MS = 1_000;
 
 /** One entry of /auth/me's `memberships[]`. Each workspace carries its own role and profile. */
 export interface Membership {
@@ -141,8 +152,21 @@ interface AuthContextType {
   /** Last /auth/me failure that isn't "needs onboarding" (401 / 500 / offline / timeout). */
   meError: string | null;
   needsOnboarding: boolean;
+  /** True while any /auth/me request is in flight, including background refreshes. */
   loadingMe: boolean;
+  /**
+   * True only while the account is first being resolved after sign-in or launch. This is what the
+   * router gate waits on; a later refresh must not unmount the navigator.
+   */
+  resolvingAccount: boolean;
   refreshMe: () => Promise<void>;
+  /**
+   * Silent background refresh: skipped when a request is in flight, when one started within the
+   * last minute, or while auto-refresh is paused. Failures never set meError.
+   */
+  refreshIfStale: () => void;
+  /** Suspend refreshIfStale, e.g. while a session is recording so its placement cannot change. */
+  setAutoRefreshPaused: (paused: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -160,7 +184,10 @@ const AuthContext = createContext<AuthContextType>({
   meError: null,
   needsOnboarding: false,
   loadingMe: false,
+  resolvingAccount: false,
   refreshMe: async () => {},
+  refreshIfStale: () => {},
+  setAutoRefreshPaused: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -171,7 +198,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [persistedWorkspaceId, setPersistedWorkspaceId] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [loadingMe, setLoadingMe] = useState(false);
+  const [resolvingAccount, setResolvingAccount] = useState(false);
   const [meError, setMeError] = useState<string | null>(null);
+  // Start time of the last /auth/me attempt, successful or not. Throttling on attempts rather than
+  // successes keeps a failing network from turning every app switch into a request.
+  const lastMeAttemptAt = useRef(0);
+  const meInFlight = useRef(false);
+  const autoRefreshPaused = useRef(false);
 
   // Hydrate cache + last chosen workspace before (or instead of) a successful /auth/me.
   useEffect(() => {
@@ -201,18 +234,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const refreshMe = useCallback(async () => {
+  // `silent` is for background refreshes: a failure leaves meError untouched, so it can never raise
+  // the account-error screen; the cached profile simply stays in use.
+  const loadMe = useCallback(async (silent: boolean) => {
     if (!auth.currentUser) {
       setMe(null);
       setNeedsOnboarding(false);
       setMeError(null);
-      // Must clear here too: callers set loadingMe before invoking us, so returning without
-      // clearing it strands the router gate on its spinner forever.
       setLoadingMe(false);
       return;
     }
+    meInFlight.current = true;
+    lastMeAttemptAt.current = Date.now();
     setLoadingMe(true);
-    setMeError(null);
+    if (!silent) setMeError(null);
     try {
       const data = await getMe();
       setMe(data);
@@ -236,28 +271,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMe(null);
         setNeedsOnboarding(true);
         setMeError(null);
-      } else {
+      } else if (!silent) {
         // Everything else (401 / 500 / offline / timeout) is recorded so the UI can show it.
         // State is otherwise left alone, so a cached profile still serves offline use.
         setMeError(message);
       }
     } finally {
+      meInFlight.current = false;
       setLoadingMe(false);
     }
   }, []);
+
+  const refreshMe = useCallback(() => loadMe(false), [loadMe]);
+
+  const refreshIfStale = useCallback(() => {
+    if (!auth.currentUser || meInFlight.current || autoRefreshPaused.current) return;
+    if (Date.now() - lastMeAttemptAt.current < ME_REFRESH_INTERVAL_MS - TIMER_SLACK_MS) return;
+    loadMe(true).catch(() => {});
+  }, [loadMe]);
+
+  const setAutoRefreshPaused = useCallback((paused: boolean) => {
+    autoRefreshPaused.current = paused;
+  }, []);
+
+  // Coming back to the app is when changes made on the web (a teacher moving a student's group)
+  // are most likely to be waiting. Throttled by refreshIfStale, so quick app switches cost nothing.
+  useEffect(() => {
+    let previous = AppState.currentState;
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active" && previous !== "active") refreshIfStale();
+      previous = next;
+    });
+    return () => sub.remove();
+  }, [refreshIfStale]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        setLoadingMe(true); // block the router gate until /auth/me resolves
+        setResolvingAccount(true); // block the router gate until /auth/me resolves
         await refreshMe();
+        setResolvingAccount(false);
       } else {
         // Signed out: drop account state and every cached profile (the next user may differ).
         setMe(null);
         setNeedsOnboarding(false);
         setLoadingMe(false);
+        setResolvingAccount(false);
         setMeError(null);
+        lastMeAttemptAt.current = 0;
+        autoRefreshPaused.current = false;
         setProfileCache({});
         setPersistedWorkspaceId(null);
         AsyncStorage.multiRemove([
@@ -318,7 +381,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         meError,
         needsOnboarding,
         loadingMe,
+        resolvingAccount,
         refreshMe,
+        refreshIfStale,
+        setAutoRefreshPaused,
       }}
     >
       {children}

@@ -33,14 +33,16 @@ function resolveRedirect(
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { initializing, user, profile, meError, needsOnboarding, loadingMe, refreshMe } = useAuth();
+  const { initializing, user, profile, meError, needsOnboarding, resolvingAccount, refreshMe } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   // The index route ("/") has no first segment.
   const current = (segments[0] as string) ?? "index";
 
   // Auth state is still settling: nothing can be decided yet, and nothing protected may mount.
-  const undecided = initializing || (user != null && loadingMe);
+  // Only the first resolution counts. Gating on every /auth/me request swapped the whole navigator
+  // for a spinner on each refresh, which unmounted every screen and dropped the user back on Home.
+  const undecided = initializing || (user != null && resolvingAccount);
   const redirectTo = undecided ? null : resolveRedirect(user, needsOnboarding, current);
 
   useEffect(() => {
