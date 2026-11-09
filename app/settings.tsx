@@ -15,13 +15,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { updateMyProfile } from "./api/auth";
 import { useAuth } from "./authContext";
-import { manager, useBLE } from "./bleContext";
+import { useBLE } from "./bleContext";
 import { ChipPicker } from "./components/ChipPicker";
 import { groupsFor, normalizeGroup, normalizePeriod, useClassStructure } from "./useClassStructure";
 
 export default function Settings() {
   const router = useRouter();
-  const { connectedDevice, setConnectedDevice } = useBLE();
+  const { disconnectDevice: releaseDevice } = useBLE();
   const {
     profile,
     role,
@@ -111,14 +111,7 @@ export default function Settings() {
         text: "Disconnect",
         style: "destructive",
         onPress: async () => {
-          if (connectedDevice) {
-            try {
-              await manager.cancelDeviceConnection(connectedDevice.id);
-            } catch (e) {
-              console.log("Disconnect error:", e);
-            }
-          }
-          setConnectedDevice(null);
+          await releaseDevice();
           // Only the device pairing is local now; the profile lives on the account.
           await AsyncStorage.removeItem("savedMacAddress").catch(() => {});
           Alert.alert("Done", "Device disconnected.");

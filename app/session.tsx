@@ -3,6 +3,7 @@ import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Subscription } from "react-native-ble-plx";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./authContext";
 import { manager, useBLE } from "./bleContext";
@@ -28,9 +29,10 @@ export default function Session() {
   const router = useRouter();
   const { connectedDevice } = useBLE();
   const { profile } = useAuth();
-  // Padding on a ScrollView's own style is not scrollable space, so the only room below
-  // "End Session" was its 40 of margin — less than the navigation bar, which is why the button
-  // could not be tapped. The inset goes on the content container so it scrolls clear.
+  // All padding lives on the content container, never on the ScrollView's own style. Style
+  // padding offsets the content (paddingTop pushed it down 60) without growing the scroll range,
+  // so the bottom 60 of content could never scroll into view and "End Session" stayed under the
+  // navigation bar. Here the inset clears the nav bar and the button's 40 margin is the gap above it.
   const insets = useSafeAreaInsets();
 
   // Account-synced profile (cached offline) stamps the session metadata into each CSV row.
@@ -72,6 +74,14 @@ export default function Session() {
 
   const csvRows = useRef<string[]>([]);
   const timerRef = useRef<any>(null);
+  // The live-data notification. Kept so it can be removed: a discarded handle keeps notifying a
+  // dead screen, and every later session adds another one on top.
+  const monitorRef = useRef<Subscription | null>(null);
+
+  const stopMonitoring = () => {
+    monitorRef.current?.remove();
+    monitorRef.current = null;
+  };
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
@@ -83,9 +93,12 @@ export default function Session() {
     }
     getLocation();
 
+    // Unmount stops listening but deliberately keeps the connection: only Settings > Disconnect
+    // releases the device, so a student can end one session and start the next without re-pairing.
     return () => {
       clearInterval(timerRef.current);
       manager.stopDeviceScan();
+      stopMonitoring();
     };
   }, []);
 
@@ -99,7 +112,8 @@ export default function Session() {
 
   const connectAndListen = async (id: string) => {
     try {
-      connectedDevice!.monitorCharacteristicForService(SERVICE_UUID, CHAR_UUID, (error, char) => {
+      stopMonitoring();
+      monitorRef.current = connectedDevice!.monitorCharacteristicForService(SERVICE_UUID, CHAR_UUID, (error, char) => {
         if (error || !char?.value) return;
         const decoded = atob(char.value);
         const parts = decoded.split(",");
@@ -175,11 +189,14 @@ export default function Session() {
     await FileSystem.writeAsStringAsync(filePath, csvContent, { encoding: "utf8" });
     console.log("Saved to:", filePath);
     router.push("/history");
+    // Ending a session keeps the device connected for the next one. Pushing History leaves this
+    // screen mounted underneath, so stop its notification here rather than waiting for unmount.
+    stopMonitoring();
     setSaving(false);
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom }}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom }]}>
       <Text style={styles.header}>New Session</Text>
 {connectedDevice && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 }}>
@@ -266,7 +283,8 @@ export default function Session() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", padding: 24, paddingTop: 60 },
+  container: { flex: 1, backgroundColor: "#fff" },
+  content: { padding: 24, paddingTop: 60 },
   header: { fontSize: 29, fontWeight: "bold", color: "#1a73e8", marginBottom: 20 },
   input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12, fontSize: 17, marginBottom: 16 },
   siteRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },

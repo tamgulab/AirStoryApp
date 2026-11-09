@@ -25,6 +25,22 @@ export default function Connect() {
     return true;
   };
 
+  // A board that is still connected doesn't advertise, so it can never show up in the scan. The
+  // Scan button only appears when the app holds no device, so a live link to the saved board here
+  // is stale: close it so the board advertises again and the user picks it from the list as usual.
+  const releaseStaleConnection = async () => {
+    const savedId = await AsyncStorage.getItem("savedMacAddress").catch(() => null);
+    if (!savedId) return;
+    try {
+      if (await manager.isDeviceConnected(savedId)) {
+        await manager.cancelDeviceConnection(savedId);
+      }
+    } catch (e) {
+      // Unknown or already-gone device: nothing to release.
+      console.log("Stale connection check:", e);
+    }
+  };
+
   const startScan = async () => {
     const ok = await requestPermissions();
     if (!ok) {
@@ -33,6 +49,7 @@ export default function Connect() {
     }
     setScanning(true);
     setDevices([]);
+    await releaseStaleConnection();
     manager.startDeviceScan(null, null, (error, device) => {
       if (error) { setScanning(false); return; }
       if (device && device.name && device.name.includes("AirStory")) {
@@ -61,6 +78,8 @@ const connectDevice = async (device: Device) => {
       await AsyncStorage.setItem("savedMacAddress", device.id);
       setConnecting(false);
     } catch (e) {
+      // connect() may have succeeded before service discovery failed; don't leave that link open.
+      manager.cancelDeviceConnection(device.id).catch(() => {});
       setConnecting(false);
       Alert.alert("Connection failed", "Could not connect to device.");
     }
