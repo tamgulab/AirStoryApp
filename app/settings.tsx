@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getMe, updateMyProfile } from "./api/auth";
-import { API_BASE } from "./api/http"; // TEMP-DEBUG(profile-save)
 import { type Membership, type Profile, useAuth } from "./authContext";
 import { useBLE } from "./bleContext";
 import { ChipPicker } from "./components/ChipPicker";
@@ -146,7 +145,6 @@ export default function Settings() {
     if (!activeWorkspaceId) return;
     setSaving(true);
     try {
-      console.log("[profile-save] commitEdits fields", JSON.stringify(fields)); // TEMP-DEBUG(profile-save)
       await updateMyProfile({
         workspaceId: activeWorkspaceId,
         ...(fields.includes("instructor") ? { instructor: instructor.trim() } : {}),
@@ -155,10 +153,8 @@ export default function Settings() {
       });
       // Pull the saved values back and refresh the offline cache, then return home.
       await refreshMe();
-      console.log("[profile-save] PATCH ok, refreshMe done, navigating home"); // TEMP-DEBUG(profile-save)
       router.replace("/");
     } catch (e: any) {
-      console.log("[profile-save] commitEdits error", String(e?.message || e)); // TEMP-DEBUG(profile-save)
       setError(e?.message || "Could not save. Check your connection and try again.");
     } finally {
       setSaving(false);
@@ -198,25 +194,13 @@ export default function Settings() {
 
   const saveProfile = async () => {
     setError("");
-    // TEMP-DEBUG(profile-save) start
-    console.log("[profile-save] tap", JSON.stringify({
-      apiBase: API_BASE,
-      workspaceId: activeWorkspaceId,
-      role,
-      base,
-      form,
-      editedFields,
-    }));
-    // TEMP-DEBUG(profile-save) end
     // Profiles are per-workspace, so there is nothing to save into until the class workspace
     // is known (a brand-new account in Public only, or an offline first launch).
     if (!activeWorkspaceId) {
       setError("No class workspace yet — your teacher needs to add you to a class first.");
-      console.log("[profile-save] early return: no activeWorkspaceId"); // TEMP-DEBUG(profile-save)
       return;
     }
     if (!editedFields.length) {
-      console.log("[profile-save] early return: nothing edited, no PATCH sent"); // TEMP-DEBUG(profile-save)
       router.replace("/");
       return;
     }
@@ -230,15 +214,12 @@ export default function Settings() {
         (m: Membership) => m.workspace_id === activeWorkspaceId
       );
       if (!membership) {
-        console.log("[profile-save] early return: workspace not in /auth/me memberships"); // TEMP-DEBUG(profile-save)
         setError("You are no longer in this class. Pull down to refresh.");
         setSaving(false);
         return;
       }
       server = membershipFields(membership);
-      console.log("[profile-save] server now", JSON.stringify(server)); // TEMP-DEBUG(profile-save)
     } catch (e: any) {
-      console.log("[profile-save] early return: pre-save getMe failed", String(e?.message || e)); // TEMP-DEBUG(profile-save)
       setError(e?.message || "Could not check for changes. Check your connection and try again.");
       setSaving(false);
       return;
@@ -249,7 +230,6 @@ export default function Settings() {
     // to decide.)
     const conflicts = editedFields.filter((f) => server[f] !== base[f] && server[f] !== form[f]);
     if (conflicts.length) {
-      console.log("[profile-save] conflict dialog, no PATCH yet", JSON.stringify(conflicts)); // TEMP-DEBUG(profile-save)
       askAboutConflicts(conflicts, server);
       return;
     }
