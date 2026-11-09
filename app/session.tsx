@@ -1,8 +1,9 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as Location from "expo-location";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { usePreventRemove } from "@react-navigation/native";
 import { Subscription } from "react-native-ble-plx";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./authContext";
@@ -27,6 +28,7 @@ function RecordingBadge() {
 
 export default function Session() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { connectedDevice } = useBLE();
   const { profile } = useAuth();
   // All padding lives on the content container, never on the ScrollView's own style. Style
@@ -44,6 +46,9 @@ export default function Session() {
   const group = profile?.groupCode || "";
 
   const [initialized, setInitialized] = useState(false);
+  // Set right before the screen's own exits (Discard, Save & Exit, device lost), which have already
+  // settled what happens to the recording and must not trigger the leave confirmation.
+  const skipLeaveConfirmRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setInitialized(true), 1000);
@@ -53,6 +58,8 @@ export default function Session() {
   useFocusEffect(
     React.useCallback(() => {
       if (initialized && !connectedDevice) {
+        // The device is gone, so there is nothing to keep recording; leave without asking.
+        skipLeaveConfirmRef.current = true;
         router.replace("/");
       }
     }, [connectedDevice, initialized])
@@ -60,8 +67,33 @@ export default function Session() {
 
   const [sessionName, setSessionName] = useState("");
   const [siteType, setSiteType] = useState("Indoor");
+  // The screen opens in setup (name + site type) and only records once Record is tapped. Before
+  // that, readings may arrive but no timer runs and no rows are written.
+  const [recording, setRecording] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [startTime] = useState(new Date().toISOString());
+  const [startTime, setStartTime] = useState("");
+  const canRecord = sessionName.trim().length > 0;
+
+  // Header back, Android hardware back and any other pop all remove this screen through the
+  // navigator, so one hook covers them. Setup state is not guarded: nothing is recorded yet.
+  usePreventRemove(recording, ({ data }) => {
+    if (skipLeaveConfirmRef.current) {
+      navigation.dispatch(data.action);
+      return;
+    }
+    Alert.alert(
+      "Stop recording?",
+      "If you leave now, this recording will be lost. To keep it, tap End Session and choose Save & Exit.",
+      [
+        { text: "Keep Recording", style: "cancel" },
+        {
+          text: "Discard & Leave",
+          style: "destructive",
+          onPress: () => navigation.dispatch(data.action),
+        },
+      ]
+    );
+  });
 
   const [pm25, setPm25] = useState(0);
   const [co, setCo] = useState(0);
@@ -84,10 +116,8 @@ export default function Session() {
   };
 
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setDuration(d => d + 1);
-    }, 1000);
-
+    // Subscribe on open, as before: the live data starts flowing during setup so the first reading
+    // is already in hand when Record is tapped. Rows are gated on `recording`, not on this.
     if (connectedDevice) {
       connectAndListen(connectedDevice.id);
     }
@@ -101,6 +131,17 @@ export default function Session() {
       stopMonitoring();
     };
   }, []);
+
+  const startRecording = () => {
+    if (!canRecord || recording) return;
+    setSessionName(sessionName.trim());
+    setStartTime(new Date().toISOString());
+    setDuration(0);
+    timerRef.current = setInterval(() => {
+      setDuration(d => d + 1);
+    }, 1000);
+    setRecording(true);
+  };
 
   const getLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -133,7 +174,9 @@ export default function Session() {
 
   useEffect(() => {
     if (temp === 0 && hum === 0) return;
-    if (!sessionName.trim()) return;
+    // Setup readings are previews only. Recording can't start without a name and the name is
+    // locked once it does, so this also replaces the old empty-name check.
+    if (!recording) return;
     const now = new Date();
     const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
     const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
@@ -155,7 +198,14 @@ export default function Session() {
       "What would you like to do?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Discard", style: "destructive", onPress: () => router.replace("/") },
+        {
+          text: "Discard",
+          style: "destructive",
+          onPress: () => {
+            skipLeaveConfirmRef.current = true;
+            router.replace("/");
+          },
+        },
         { text: "Save & Exit", onPress: () => saveAndExit() },
       ]
     );
@@ -188,6 +238,8 @@ export default function Session() {
     const filePath = FileSystem.documentDirectory + fileName;
     await FileSystem.writeAsStringAsync(filePath, csvContent, { encoding: "utf8" });
     console.log("Saved to:", filePath);
+    // Saved: this screen stays under History, and removing it later must not warn about loss.
+    skipLeaveConfirmRef.current = true;
     router.push("/history");
     // Ending a session keeps the device connected for the next one. Pushing History leaves this
     // screen mounted underneath, so stop its notification here rather than waiting for unmount.
@@ -196,12 +248,20 @@ export default function Session() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom }]}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom }]}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.header}>New Session</Text>
 {connectedDevice && (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <View style={styles.connectedBadge}>
-            <Text style={styles.connectedText}>Device Connected: {connectedDevice.name}</Text>
+        // Wraps instead of overflowing: on a narrow phone the battery badge drops to its own line,
+        // and a device name too long even for a full line ellipsizes rather than pushing off-screen.
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, marginBottom: 16 }}>
+          <View style={[styles.connectedBadge, { flexShrink: 1 }]}>
+            <Text style={styles.connectedText} numberOfLines={1} ellipsizeMode="tail">
+              Device Connected: {connectedDevice.name}
+            </Text>
           </View>
 {battery > 0 && (
             <View style={[styles.connectedBadge, { 
@@ -220,64 +280,97 @@ export default function Session() {
               }]}>
 {battery >= 4.2 
                   ? `🔋⚡ (${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%)`
-                  : `🔋 ${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%`}              </Text>
+                  : `🔋 ${Math.min(100, Math.max(0, Math.round(((battery - 3.0) / (4.2 - 3.0)) * 100)))}%`}
+              </Text>
             </View>
           )}
         </View>
       )}
-      {isReceiving && <RecordingBadge />}
+      {!recording ? (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Session Name (e.g. Bus station)"
+            value={sessionName}
+            onChangeText={setSessionName}
+            returnKeyType="done"
+          />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Session Name (e.g. Bus station)"
-        value={sessionName}
-        onChangeText={setSessionName}
-      />
+          <View style={styles.siteRow}>
+            <Text style={styles.label}>Site type</Text>
+            <TouchableOpacity
+              style={[styles.siteBtn, siteType === "Indoor" && styles.siteBtnActive]}
+              onPress={() => setSiteType("Indoor")}
+            >
+              <Text style={[styles.siteBtnText, siteType === "Indoor" && styles.siteBtnTextActive]}>Indoor</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.siteBtn, siteType === "Outdoor" && styles.siteBtnActive]}
+              onPress={() => setSiteType("Outdoor")}
+            >
+              <Text style={[styles.siteBtnText, siteType === "Outdoor" && styles.siteBtnTextActive]}>Outdoor</Text>
+            </TouchableOpacity>
+          </View>
 
-      <View style={styles.siteRow}>
-        <Text style={styles.label}>Site type</Text>
-        <TouchableOpacity
-          style={[styles.siteBtn, siteType === "Indoor" && styles.siteBtnActive]}
-          onPress={() => setSiteType("Indoor")}
-        >
-          <Text style={[styles.siteBtnText, siteType === "Indoor" && styles.siteBtnTextActive]}>Indoor</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.siteBtn, siteType === "Outdoor" && styles.siteBtnActive]}
-          onPress={() => setSiteType("Outdoor")}
-        >
-          <Text style={[styles.siteBtnText, siteType === "Outdoor" && styles.siteBtnTextActive]}>Outdoor</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
+            onPress={startRecording}
+            disabled={!canRecord}
+            accessibilityState={{ disabled: !canRecord }}
+          >
+            <Text style={[styles.recordButtonText, !canRecord && styles.recordButtonTextDisabled]}>● Record</Text>
+          </TouchableOpacity>
+          {!canRecord ? <Text style={styles.hint}>Enter a session name to start recording.</Text> : null}
+        </>
+      ) : (
+        <>
+          {isReceiving ? <RecordingBadge /> : <Text style={styles.waiting}>Waiting for sensor data…</Text>}
 
-      <Text style={styles.info}>Start Time: {new Date(startTime).toLocaleString()}</Text>
-      <Text style={styles.info}>Duration: {formatDuration(duration)}</Text>
-      <Text style={styles.info}>Location: {lat.toFixed(4)}, {lon.toFixed(4)}</Text>
+          {/* Locked for the rest of the session: every row is stamped with these. */}
+          <View style={styles.summary}>
+            {/* The name column is only as wide as its text and Site type sits a fixed gap after it.
+                It shrinks (minWidth 0 lets it go below its text width) only when the two don't fit,
+                which is what makes a long name ellipsize instead of pushing Site type off. */}
+            <View style={styles.summaryName}>
+              <Text style={styles.summaryLabel}>Session</Text>
+              <Text style={styles.summaryValue} numberOfLines={1} ellipsizeMode="tail">{sessionName}</Text>
+            </View>
+            <View>
+              <Text style={styles.summaryLabel}>Site type</Text>
+              <Text style={styles.summaryValue}>{siteType}</Text>
+            </View>
+          </View>
 
-      <Text style={styles.sectionTitle}>Data Preview</Text>
+          <Text style={styles.info}>Start Time: {new Date(startTime).toLocaleString()}</Text>
+          <Text style={styles.info}>Duration: {formatDuration(duration)}</Text>
+          <Text style={styles.info}>Location: {lat.toFixed(4)}, {lon.toFixed(4)}</Text>
 
-      <View style={styles.dataGrid}>
-        <View style={styles.dataCard}>
-          <Text style={styles.dataValue}>{pm25}</Text>
-          <Text style={styles.dataLabel}>PM2.5 ug/m3</Text>
-        </View>
-        <View style={styles.dataCard}>
-          <Text style={styles.dataValue}>{co}</Text>
-          <Text style={styles.dataLabel}>CO ppm</Text>
-        </View>
-        <View style={styles.dataCard}>
-          <Text style={styles.dataValue}>{temp}</Text>
-          <Text style={styles.dataLabel}>Temp C</Text>
-        </View>
-        <View style={styles.dataCard}>
-          <Text style={styles.dataValue}>{hum}</Text>
-          <Text style={styles.dataLabel}>Hum %</Text>
-        </View>
-      </View>
+          <Text style={styles.sectionTitle}>Data Preview</Text>
 
-      <TouchableOpacity style={styles.endButton} onPress={endSession}>
-        <Text style={styles.endButtonText}>{saving ? "Saving..." : "End Session"}</Text>
-      </TouchableOpacity>
+          <View style={styles.dataGrid}>
+            <View style={styles.dataCard}>
+              <Text style={styles.dataValue}>{pm25}</Text>
+              <Text style={styles.dataLabel}>PM2.5 ug/m3</Text>
+            </View>
+            <View style={styles.dataCard}>
+              <Text style={styles.dataValue}>{co}</Text>
+              <Text style={styles.dataLabel}>CO ppm</Text>
+            </View>
+            <View style={styles.dataCard}>
+              <Text style={styles.dataValue}>{temp}</Text>
+              <Text style={styles.dataLabel}>Temp C</Text>
+            </View>
+            <View style={styles.dataCard}>
+              <Text style={styles.dataValue}>{hum}</Text>
+              <Text style={styles.dataLabel}>Hum %</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.endButton} onPress={endSession}>
+            <Text style={styles.endButtonText}>{saving ? "Saving..." : "End Session"}</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -304,6 +397,16 @@ const styles = StyleSheet.create({
   batteryWarningText: { color: "#c62828", fontSize: 16, fontWeight: "600" },
   connectedBadge: { backgroundColor: "#e6f4ea", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 16, alignSelf: "flex-start" },
   connectedText: { color: "#2e7d32", fontSize: 16, fontWeight: "600" },
+  recordButton: { backgroundColor: "#e53935", padding: 16, borderRadius: 12, alignItems: "center", marginTop: 8, marginBottom: 8 },
+  recordButtonDisabled: { backgroundColor: "#eee" },
+  recordButtonText: { color: "#fff", fontSize: 19, fontWeight: "600" },
+  recordButtonTextDisabled: { color: "#aaa" },
+  hint: { fontSize: 15, color: "#888", textAlign: "center", marginBottom: 40 },
+  waiting: { fontSize: 16, color: "#888", marginBottom: 12 },
+  summary: { flexDirection: "row", gap: 16, backgroundColor: "#f5f5f5", borderRadius: 12, padding: 14, marginBottom: 16 },
+  summaryName: { flexShrink: 1, minWidth: 0 },
+  summaryLabel: { fontSize: 13, color: "#888", textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryValue: { fontSize: 18, color: "#333", fontWeight: "600" },
   endButton: { backgroundColor: "#1a73e8", padding: 16, borderRadius: 12, alignItems: "center", marginBottom: 40 },
   endButtonText: { color: "#fff", fontSize: 19, fontWeight: "600" },
 });
